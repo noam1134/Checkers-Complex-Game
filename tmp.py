@@ -304,6 +304,9 @@ class Board:
 
     # Get all valid moves for the selected piece
     def get_valid_moves(self, piece):
+        """
+        Get all valid moves for the selected piece.
+        """
         moves = {}
         if piece.knight:
             moves.update(self._knight_moves(piece))
@@ -320,6 +323,9 @@ class Board:
 
     # Traverse forward to find valid moves
     def _traverse_forward(self, start, stop, step, color, col, skipped=[]):
+        """
+        Traverse forward to find valid moves.
+        """
         moves = {}
         last = []
         for r in range(start, stop, step):
@@ -484,17 +490,104 @@ class Board:
                         moves.append((piece, move, skipped))
         return moves
 
-    def get_pieces_in_danger(self, opponent_color):
-        pieces_in_danger = []
-        for row in self.board:
-            for piece, color in row:
-                if isinstance(piece, Piece) and piece.color == opponent_color:
-                    valid_moves = self.get_valid_moves(piece)
-                    for move, skipped in valid_moves.items():
-                        if skipped:
-                            pieces_in_danger.append(piece)
-                            break
-        return pieces_in_danger
+
+
+    def is_piece_in_danger(self, piece):
+        """
+        Check if the given piece is in danger of being captured.
+        """
+        directions = [(-1, -1), (-1, 1), (1, -1), (1, 1)]  # Diagonal directions
+        for dr, dc in directions:
+            new_row, new_col = piece.row + dr, piece.col + dc
+            if 0 <= new_row < ROWS and 0 <= new_col < COLS:
+                opponent_piece, color = self.board[new_row][new_col]
+                if isinstance(opponent_piece, Piece) and opponent_piece.color != piece.color:
+                    # Check if the opponent can capture the piece in the next move
+                    capture_row, capture_col = new_row + dr, new_col + dc
+                    if 0 <= capture_row < ROWS and 0 <= capture_col < COLS:
+                        target_piece, _ = self.board[capture_row][capture_col]
+                        if target_piece == 0:  # Empty square where the capture would land
+                            return True
+        return False
+
+    def is_future_move_safe(self, piece, move_pos):
+        """
+        Check if moving to move_pos would result in the piece being threatened.
+        """
+        row, col = move_pos
+        opponent_color = RED if piece.color == BLUE else BLUE
+
+        if self._is_threat_from_diagonals(row, col, opponent_color):
+            return False
+
+        if self._is_threat_from_knight(row, col, opponent_color):
+            return False
+
+        return True
+
+    def _is_threat_from_diagonals(self, row, col, opponent_color):
+        """
+        Check if there are threats from diagonals.
+        """
+        directions = [(-1, -1), (-1, 1), (1, -1), (1, 1)]  # Diagonal directions
+
+        for dr, dc in directions:
+            opp_row, opp_col = row + dr, col + dc
+            if 0 <= opp_row < ROWS and 0 <= opp_col < COLS:
+                opponent_piece, color = self.board[opp_row][opp_col]
+                if isinstance(opponent_piece, Piece) and color == opponent_color:
+                    capture_row, capture_col = opp_row + dr, opp_col + dc
+                    if 0 <= capture_row < ROWS and 0 <= capture_col < COLS:
+                        target_piece, _ = self.board[capture_row][capture_col]
+                        if target_piece == 0:  # Empty square where the capture would land
+                            return True
+
+        # Check for threats two steps ahead
+        for dr, dc in directions:
+            opp_row, opp_col = row + 2 * dr, col + 2 * dc
+            if 0 <= opp_row < ROWS and 0 <= opp_col < COLS:
+                opponent_piece, color = self.board[opp_row][opp_col]
+                if isinstance(opponent_piece, Piece) and color == opponent_color:
+                    middle_row, middle_col = row + dr, col + dc
+                    middle_piece, _ = self.board[middle_row][middle_col]
+                    if isinstance(middle_piece, Piece) and middle_piece.color == opponent_color:
+                        return True
+
+        return False
+
+    def _is_threat_from_knight(self, row, col, opponent_color):
+        """
+        Check if there are threats from knight pieces.
+        """
+        knight_directions = [
+            (2, 1), (1, 2), (-1, 2), (-2, 1),
+            (-2, -1), (-1, -2), (1, -2), (2, -1)
+        ]
+
+        for dr, dc in knight_directions:
+            opp_row, opp_col = row + dr, col + dc
+            if 0 <= opp_row < ROWS and 0 <= opp_col < COLS:
+                opponent_piece, color = self.board[opp_row][opp_col]
+                if isinstance(opponent_piece, Piece) and color == opponent_color and opponent_piece.knight:
+                    return True
+
+        return False
+
+    def is_knight_capture_possible(self, piece):
+        """
+        Check if the knight can capture an opponent piece.
+        """
+        directions = [
+            (2, 1), (1, 2), (-1, 2), (-2, 1),
+            (-2, -1), (-1, -2), (1, -2), (2, -1)
+        ]
+        for dr, dc in directions:
+            new_row, new_col = piece.row + dr, piece.col + dc
+            if 0 <= new_row < ROWS and 0 <= new_col < COLS:
+                target, target_color = self.board[new_row][new_col]
+                if isinstance(target, Piece) and target.color != piece.color:
+                    return True
+        return False
 
     # Create a copy of the board
     def copy(self):
@@ -506,25 +599,29 @@ def evaluate(board):
     """
     Evaluate the board and return a score.
     """
-    # Basic evaluation based on points
     score = board.blue_points - board.red_points
 
-    # Additional heuristic: consider piece safety
     for row in board.board:
         for piece, color in row:
             if isinstance(piece, Piece):
-                # Penalize if a computer piece is in danger
                 if piece.color == BLUE:
-                    if piece in board.get_pieces_in_danger(RED):
-                        score -= 2  # Subtract a higher penalty for pieces in danger
-                # Reward if an opponent piece is in danger
+                    score += 1  # Reward for each blue piece
+                    if piece.knight:
+                        score += 5  # Higher value for blue knights
+                    if not board.is_future_move_safe(piece, (piece.row, piece.col)):
+                        score -= 3  # Higher penalty for blue pieces in danger
+                    if board.is_knight_capture_possible(piece):
+                        score += 5  # Reward if the knight can capture
                 elif piece.color == RED:
-                    if piece in board.get_pieces_in_danger(BLUE):
-                        score += 1  # Add reward for opponent pieces in danger
+                    score -= 1  # Penalize for each red piece
+                    if piece.knight:
+                        score -= 5  # Higher penalty for red knights
+                    if not board.is_future_move_safe(piece, (piece.row, piece.col)):
+                        score += 3  # Reward for red pieces in danger
+                    if board.is_knight_capture_possible(piece):
+                        score -= 5  # Penalize if the red knight can capture
 
     return score
-
-
 
 
 def minimax(board, depth, alpha, beta, maximizing_player):
@@ -532,13 +629,23 @@ def minimax(board, depth, alpha, beta, maximizing_player):
         return evaluate(board), None
 
     valid_moves = board.get_all_valid_moves(board.turn)
+    safe_moves = []
+
+    for move in valid_moves:
+        piece, move_pos, skipped = move
+        if board.is_future_move_safe(piece, move_pos):
+            safe_moves.append(move)
+
+    # If no safe moves are found, use the valid moves as a fallback
+    moves_to_consider = safe_moves if safe_moves else valid_moves
 
     if maximizing_player:
         max_eval = float('-inf')
         best_move = None
-        for move in valid_moves:
+        for move in moves_to_consider:
             temp_board = board.copy()
             piece, move_pos, skipped = move
+            # temp_board.move(piece, move_pos[0], move_pos[1])
             if skipped:
                 temp_board.remove(skipped)
             temp_board.change_turn()
@@ -553,9 +660,10 @@ def minimax(board, depth, alpha, beta, maximizing_player):
     else:
         min_eval = float('inf')
         best_move = None
-        for move in valid_moves:
+        for move in moves_to_consider:
             temp_board = board.copy()
             piece, move_pos, skipped = move
+            # temp_board.move(piece, move_pos[0], move_pos[1])
             if skipped:
                 temp_board.remove(skipped)
             temp_board.change_turn()
