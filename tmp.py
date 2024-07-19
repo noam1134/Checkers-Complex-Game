@@ -1,12 +1,13 @@
 import pygame
 import sys
 import time
+import copy
 
 # Initialize Pygame
 pygame.init()
 
 # Screen dimensions
-BOARD_WIDTH, BOARD_HEIGHT = 800, 800
+BOARD_WIDTH, BOARD_HEIGHT = 700, 700
 PANEL_WIDTH = 400
 WIDTH, HEIGHT = BOARD_WIDTH + PANEL_WIDTH, BOARD_HEIGHT
 ROWS, COLS = 12, 12
@@ -23,7 +24,6 @@ YELLOW = (255, 255, 0)
 SPECIAL_RED = (255, 105, 180)  # Pink for red player knight
 SPECIAL_BLUE = (135, 206, 250)  # Light blue for blue player knight
 HIGHLIGHT = (173, 216, 230)  # Light blue for highlighting valid cells
-
 LIGHT_RED = (255, 182, 193)
 LIGHT_BLUE = (173, 216, 230)
 
@@ -46,10 +46,12 @@ class Piece:
         self.y = 0
         self.calc_pos()
 
+    # Calculate position of the piece on the board
     def calc_pos(self):
         self.x = SQUARE_SIZE * self.col + SQUARE_SIZE // 2
         self.y = SQUARE_SIZE * self.row + SQUARE_SIZE // 2
 
+    # Draw the piece on the window
     def draw(self, win):
         radius = SQUARE_SIZE // 2 - self.PADDING
         pygame.draw.circle(win, GREY, (self.x, self.y), radius + self.OUTLINE)
@@ -59,6 +61,7 @@ class Piece:
         if self.knight:
             pygame.draw.circle(win, GREEN, (self.x, self.y), radius // 3)
 
+    # Move the piece to a new position
     def move(self, row, col):
         self.row = row
         self.col = col
@@ -85,12 +88,14 @@ class Board:
         self.create_board()
         self.start_time = time.time()  # Start the timer
 
+    # Draw the board squares
     def draw_squares(self, win):
         win.fill(BLACK)
         for row in range(ROWS):
             for col in range(row % 2, COLS, 2):
                 pygame.draw.rect(win, WHITE, (row * SQUARE_SIZE, col * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE))
 
+    # Create the initial board setup
     def create_board(self):
         self.board = []
         for row in range(ROWS):
@@ -110,6 +115,7 @@ class Board:
         self.red_knight = Piece(-1, -1, SPECIAL_RED, is_knight=True)
         self.blue_knight = Piece(-1, -1, SPECIAL_BLUE, is_knight=True)
 
+    # Draw the entire board
     def draw(self, win):
         self.draw_squares(win)
         for row in range(ROWS):
@@ -131,6 +137,7 @@ class Board:
         self.draw_valid_moves(win)
         self.draw_panel(win)
 
+    # Move a piece to a new location on the board
     def move(self, piece, row, col):
         self.board[piece.row][piece.col] = (0, None)  # Clear the old position
         if (piece.color == RED and row == ROWS - 1) or (piece.color == BLUE and row == 0):
@@ -144,15 +151,18 @@ class Board:
             self.board[row][col] = (piece, piece.color)  # Move the piece to the new position
             piece.move(row, col)
 
+    # Get the piece at the specified location
     def get_piece(self, row, col):
         piece, color = self.board[row][col]
         return piece
 
+    # Draw valid moves for the selected piece
     def draw_valid_moves(self, win):
         for move in self.valid_moves:
             row, col = move
             pygame.draw.circle(win, GREEN, (col * SQUARE_SIZE + SQUARE_SIZE // 2, row * SQUARE_SIZE + SQUARE_SIZE // 2), 15)
 
+    # Highlight valid cells during the setup phase
     def highlight_valid_cells(self, win):
         if self.turn == RED and not self.blue_knight_set:
             for row in range(ROWS - 3, ROWS):
@@ -169,6 +179,7 @@ class Board:
         if self.winner:
             return
 
+        # During setup phase
         if self.setup_phase:
             if self.turn == RED and not self.blue_knight_set:
                 # Red places the blue knight in rows 9-11 (blue starting area)
@@ -177,6 +188,7 @@ class Board:
                     self.blue_knight.move(row, col)
                     self.blue_knight_set = True
                     self.turn = BLUE
+                    self.computer_place_enemy_knight()
                     return True
             elif self.turn == BLUE and not self.red_knight_set:
                 # Blue places the red knight in rows 0-2 (red starting area)
@@ -189,6 +201,7 @@ class Board:
                     return True
             return False
 
+        # During the game, handle placing blocking boxes
         if self.placing_box:
             if self.board[row][col] == (0, None):
                 self.board[row][col] = (1, self.turn)
@@ -200,6 +213,7 @@ class Board:
                 self.change_turn()
                 return True
 
+        # Handle piece movement and selection
         if self.selected_piece:
             result = self._move(row, col)
             if not result:
@@ -207,13 +221,31 @@ class Board:
                 self.select(row, col)
 
         piece = self.get_piece(row, col)
-        if isinstance(piece, Piece) and (piece.color == self.turn or (piece.color == SPECIAL_RED and self.turn == RED) or (piece.color == SPECIAL_BLUE and self.turn == BLUE)):
+        if isinstance(piece, Piece) and (
+                piece.color == self.turn or (piece.color == SPECIAL_RED and self.turn == RED) or (
+                piece.color == SPECIAL_BLUE and self.turn == BLUE)):
             self.selected_piece = piece
             self.valid_moves = self.get_valid_moves(piece)
             return True
 
         return False
 
+    def computer_place_enemy_knight(self):
+        """
+        Computer places the enemy knight during the setup phase.
+        """
+        if self.turn == BLUE and not self.red_knight_set:
+            for row in range(3):
+                for col in range(COLS):
+                    if self.board[row][col] == (0, None):
+                        self.board[row][col] = (self.red_knight, RED)
+                        self.red_knight.move(row, col)
+                        self.red_knight_set = True
+                        self.turn = RED
+                        self.setup_phase = False
+                        return
+
+    # Execute the movement of a selected piece
     def _move(self, row, col):
         if self.selected_piece and (row, col) in self.valid_moves:
             skipped = self.valid_moves[(row, col)]
@@ -227,16 +259,18 @@ class Board:
 
         return True
 
+    # Change the turn to the other player
     def change_turn(self):
         self.valid_moves = {}
+        self.selected_piece = None  # Reset the selected piece after turn change
         if self.turn == RED:
             self.turn = BLUE
         else:
             self.turn = RED
         self.update_boxes()
 
+    # Update the blocking boxes on the board
     def update_boxes(self):
-        print(self.red_boxes, self.blue_boxes)
         for i, (position, turns) in enumerate(self.red_boxes[:]):
             if turns > 1:
                 self.red_boxes[i] = (position, turns - 1)
@@ -253,6 +287,7 @@ class Board:
                 self.board[row][col] = (0, None)
                 self.blue_boxes.pop(i)
 
+    # Remove captured pieces from the board
     def remove(self, pieces):
         for piece in pieces:
             if isinstance(piece, Piece):
@@ -261,18 +296,13 @@ class Board:
                 else:
                     self.red_captures += 1
 
-                if self.selected_piece.knight:
-                    # Place the knight in the captured piece's position
-                    self.board[piece.row][piece.col] = (self.selected_piece, self.selected_piece.color)
-                    if piece.knight:
-                        # If the captured piece is a knight, reset its position to -1, -1
-                        piece.move(-1, -1)
-                else:
-                    self.board[piece.row][piece.col] = (0, None)
-                    if piece.knight:
-                        # If the captured piece is a knight, reset its position to -1, -1
-                        piece.move(-1, -1)
+                self.board[piece.row][piece.col] = (0, None)
 
+                if piece.knight:
+                    # Reset the knight's position if it's a knight
+                    piece.move(-1, -1)
+
+    # Get all valid moves for the selected piece
     def get_valid_moves(self, piece):
         moves = {}
         if piece.knight:
@@ -288,6 +318,7 @@ class Board:
 
         return moves
 
+    # Traverse forward to find valid moves
     def _traverse_forward(self, start, stop, step, color, col, skipped=[]):
         moves = {}
         last = []
@@ -322,6 +353,7 @@ class Board:
 
         return moves
 
+    # Get valid moves for a knight piece
     def _knight_moves(self, piece):
         moves = {}
         directions = [
@@ -341,6 +373,7 @@ class Board:
 
         return moves
 
+    # Draw the panel displaying game information
     def draw_panel(self, win):
         panel_x = BOARD_WIDTH
         pygame.draw.rect(win, GREY, (panel_x, 0, PANEL_WIDTH, HEIGHT))
@@ -400,6 +433,7 @@ class Board:
 
         return None
 
+    # Check if there is a winner
     def check_winner(self):
         if self.red_points >= 3:
             self.winner = "Red"
@@ -434,12 +468,133 @@ class Board:
 
         return self.winner
 
+    # Reset the board to the initial state
     def reset(self):
         self.__init__()
         self.start_time = time.time()  # Reset the timer
 
+    # Get all valid moves for a given color
+    def get_all_valid_moves(self, color):
+        moves = []
+        for row in self.board:
+            for piece, _ in row:
+                if isinstance(piece, Piece) and piece.color == color:
+                    valid_moves = self.get_valid_moves(piece)
+                    for move, skipped in valid_moves.items():
+                        moves.append((piece, move, skipped))
+        return moves
+
+    def get_pieces_in_danger(self, opponent_color):
+        pieces_in_danger = []
+        for row in self.board:
+            for piece, color in row:
+                if isinstance(piece, Piece) and piece.color == opponent_color:
+                    valid_moves = self.get_valid_moves(piece)
+                    for move, skipped in valid_moves.items():
+                        if skipped:
+                            pieces_in_danger.append(piece)
+                            break
+        return pieces_in_danger
+
+    # Create a copy of the board
+    def copy(self):
+        new_board = copy.deepcopy(self)
+        return new_board
 
 
+def evaluate(board):
+    """
+    Evaluate the board and return a score.
+    """
+    # Basic evaluation based on points
+    score = board.blue_points - board.red_points
+
+    # Additional heuristic: consider piece safety
+    for row in board.board:
+        for piece, color in row:
+            if isinstance(piece, Piece):
+                # Penalize if a computer piece is in danger
+                if piece.color == BLUE:
+                    if piece in board.get_pieces_in_danger(RED):
+                        score -= 2  # Subtract a higher penalty for pieces in danger
+                # Reward if an opponent piece is in danger
+                elif piece.color == RED:
+                    if piece in board.get_pieces_in_danger(BLUE):
+                        score += 1  # Add reward for opponent pieces in danger
+
+    return score
+
+
+
+
+def minimax(board, depth, alpha, beta, maximizing_player):
+    if depth == 0 or board.winner:
+        return evaluate(board), None
+
+    valid_moves = board.get_all_valid_moves(board.turn)
+
+    if maximizing_player:
+        max_eval = float('-inf')
+        best_move = None
+        for move in valid_moves:
+            temp_board = board.copy()
+            piece, move_pos, skipped = move
+            if skipped:
+                temp_board.remove(skipped)
+            temp_board.change_turn()
+            eval, _ = minimax(temp_board, depth - 1, alpha, beta, False)
+            if eval > max_eval:
+                max_eval = eval
+                best_move = move
+            alpha = max(alpha, eval)
+            if beta <= alpha:
+                break
+        return max_eval, best_move
+    else:
+        min_eval = float('inf')
+        best_move = None
+        for move in valid_moves:
+            temp_board = board.copy()
+            piece, move_pos, skipped = move
+            if skipped:
+                temp_board.remove(skipped)
+            temp_board.change_turn()
+            eval, _ = minimax(temp_board, depth - 1, alpha, beta, True)
+            if eval < min_eval:
+                min_eval = eval
+                best_move = move
+            beta = min(beta, eval)
+            if beta <= alpha:
+                break
+        return min_eval, best_move
+
+
+def place_enemy_knight(board):
+    """
+    Place the enemy knight during the setup phase.
+    """
+    if board.turn == RED and not board.blue_knight_set:
+        for row in range(ROWS - 3, ROWS):
+            for col in range(COLS):
+                if board.board[row][col] == (0, None):
+                    board.board[row][col] = (board.blue_knight, BLUE)
+                    board.blue_knight.move(row, col)
+                    board.blue_knight_set = True
+                    board.turn = BLUE
+                    return
+    elif board.turn == BLUE and not board.red_knight_set:
+        for row in range(3):
+            for col in range(COLS):
+                if board.board[row][col] == (0, None):
+                    board.board[row][col] = (board.red_knight, RED)
+                    board.red_knight.move(row, col)
+                    board.red_knight_set = True
+                    board.turn = RED
+                    board.setup_phase = False
+                    return
+
+
+# Main game loop
 def main():
     run = True
     clock = pygame.time.Clock()
@@ -449,8 +604,24 @@ def main():
     while run:
         clock.tick(60)
 
+        # Check the winner based on time
         board.check_winner()
 
+        # Computer's turn to place the knight during setup phase
+        if board.turn == BLUE and board.setup_phase and not board.blue_knight_set:
+            board.computer_place_enemy_knight()
+
+        # Computer's turn to make a move
+        if board.turn == BLUE and not board.setup_phase and not board.winner:
+            _, best_move = minimax(board, 3, float('-inf'), float('inf'), True)
+            if best_move:
+                piece, move_pos, skipped = best_move
+                board.move(piece, move_pos[0], move_pos[1])
+                if skipped:
+                    board.remove(skipped)
+                board.change_turn()
+
+        # Event handling
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 run = False
@@ -461,12 +632,13 @@ def main():
                     if action_button and action_button.collidepoint(pos):
                         board.reset()
                         continue
-                elif pos[0] < BOARD_WIDTH:
+                elif pos[0] < BOARD_WIDTH and board.turn == RED:
                     row, col = pos[1] // SQUARE_SIZE, pos[0] // SQUARE_SIZE
                     board.select(row, col)
                 elif action_button and action_button.collidepoint(pos) and not board.winner:
                     board.placing_box = True
 
+        # Draw the board and update the display
         board.draw(WIN)
         action_button = board.draw_panel(WIN)
         pygame.display.update()
@@ -474,6 +646,6 @@ def main():
     pygame.quit()
     sys.exit()
 
-
+# Entry point of the script
 if __name__ == "__main__":
     main()
