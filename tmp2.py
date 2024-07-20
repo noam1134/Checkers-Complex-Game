@@ -687,8 +687,8 @@ def minimax(board, depth, alpha, beta, maximizing_player):
             temp_board = board.copy()
             piece, move_pos, skipped = move
             # temp_board.move(piece, move_pos[0], move_pos[1])
-            if skipped:
-                temp_board.remove(skipped)
+            # if skipped:
+            #     temp_board.remove(skipped)
             temp_board.change_turn()
             eval, _ = minimax(temp_board, depth - 1, alpha, beta, False)
             if eval > max_eval:
@@ -706,8 +706,8 @@ def minimax(board, depth, alpha, beta, maximizing_player):
             temp_board = board.copy()
             piece, move_pos, skipped = move
             # temp_board.move(piece, move_pos[0], move_pos[1])
-            if skipped:
-                temp_board.remove(skipped)
+            # if skipped:
+            #     temp_board.remove(skipped)
             temp_board.change_turn()
             eval, _ = minimax(temp_board, depth - 1, alpha, beta, True)
             if eval < min_eval:
